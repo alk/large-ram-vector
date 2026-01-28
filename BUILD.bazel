@@ -1,0 +1,55 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+
+CXXFLAGS = [
+    "-std=c++20",
+    "-Wno-sign-compare",
+]
+
+cc_library(
+    name = "large-vec",
+    srcs = ["large-vec.cc"],
+    hdrs = [
+        "large-vec.h",
+        "thread_annotations.h",
+    ],
+    cxxopts = CXXFLAGS,
+    visibility = ["//visibility:public"],
+)
+
+cc_test(
+    name = "large-vec-test",
+    srcs = ["large_vec_test.cc"],
+    cxxopts = CXXFLAGS,
+    deps = [
+        ":large-vec",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "replay-reallocs",
+    srcs = ["replay-reallocs.cc"],
+    cxxopts = CXXFLAGS,
+    deps = [
+        ":large-vec",
+    ],
+)
+
+cc_binary(
+    name = "replay-reallocs-malloc",
+    srcs = ["replay-reallocs.cc"],
+    cxxopts = CXXFLAGS + ["-DUSE_MALLOC_REGS"],
+    deps = [
+        ":large-vec",
+    ],
+)
+
+cc_binary(
+    name = "replay-reallocs-tcmalloc",
+    srcs = ["replay-reallocs.cc"],
+    cxxopts = CXXFLAGS + ["-DUSE_MALLOC_REGS"],
+    malloc = "@gperftools//:tcmalloc_minimal",
+    deps = [
+        ":large-vec",
+    ],
+)

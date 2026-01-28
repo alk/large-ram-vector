@@ -1,0 +1,52 @@
+Simple experiment to test one approach of dealing with large vectors
+reallocation performance. This code uses large mmap to avoid physically
+copying any pages on vector growth. It also does very agressive reuse
+of used pages from unused virtual memory chunks (by decommitting
+unused pages before growing memory usage elsewhere).
+
+replay-reallocs program contains one particular sequence of vector
+reallocations that is interesting to study. We're able to replay it
+with this approach (arguably still in need of some tuning), regular
+malloc and tcmalloc_minimal from gperftools.
+
+On my machine I get those timings:
+
+----
+root@@big:~/tmp/large-ram-vector# bazel build -c opt :all
+Starting local Bazel server (9.0.0) and connecting to it...
+INFO: Analyzed 5 targets (91 packages loaded, 1076 targets configured).
+INFO: Found 5 targets...
+INFO: Elapsed time: 9.031s, Critical Path: 5.09s
+INFO: 73 processes: 20 internal, 53 linux-sandbox.
+INFO: Build completed successfully, 73 total actions
+root@big:~/tmp/large-ram-vector# \time ./bazel-bin/replay-reallocs
+done.
+MaxRSS: 6831648
+3.70user 25.70system 0:29.42elapsed 99%CPU (0avgtext+0avgdata 6831648maxresident)k
+0inputs+8outputs (0major+46954397minor)pagefaults 0swaps
+root@big:~/tmp/large-ram-vector# \time ./bazel-bin/replay-reallocs-malloc
+done.
+MaxRSS: 6276420
+5.83user 34.70system 0:40.55elapsed 99%CPU (0avgtext+0avgdata 6276420maxresident)k
+0inputs+8outputs (0major+64675886minor)pagefaults 0swaps
+root@big:~/tmp/large-ram-vector# LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so \time ./bazel-bin/replay-reallocs-malloc
+done.
+MaxRSS: 6681640
+7.64user 40.19system 0:47.85elapsed 99%CPU (0avgtext+0avgdata 6681640maxresident)k
+0inputs+8outputs (0major+71682400minor)pagefaults 0swaps
+root@big:~/tmp/large-ram-vector# LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libmimalloc.so.3.1 \time ./bazel-bin/replay-reallocs-malloc
+done.
+MaxRSS: 7084700
+10.08user 45.52system 0:55.62elapsed 99%CPU (0avgtext+0avgdata 7084700maxresident)k
+0inputs+8outputs (0major+77942049minor)pagefaults 0swaps
+root@big:~/tmp/large-ram-vector# \time ./bazel-bin/replay-reallocs-tcmalloc
+done.
+MaxRSS: 9200956
+10.65user 5.15system 0:15.82elapsed 99%CPU (0avgtext+0avgdata 9201096maxresident)k
+0inputs+0outputs (0major+8772737minor)pagefaults 0swaps
+root@big:~/tmp/large-ram-vector# TCMALLOC_AGGRESSIVE_DECOMMIT=t \time ./bazel-bin/replay-reallocs-tcmalloc
+done.
+MaxRSS: 6918676
+15.23user 59.32system 1:14.58elapsed 99%CPU (0avgtext+0avgdata 6918676maxresident)k
+0inputs+0outputs (0major+105986989minor)pagefaults 0swaps
+----
