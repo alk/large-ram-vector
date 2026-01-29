@@ -50,7 +50,9 @@ struct MMRegs : public Regs {
     assert(ptr_place.get() != nullptr);
     ptr_place->Resize(new_size);
   }
-  __attribute__((noinline)) void DoFree(int reg) override { RegPlace(reg).reset(); }
+  __attribute__((noinline)) void DoFree(int reg) override {
+    RegPlace(reg).reset();
+  }
 
   void FreeAll() override {
     registers.clear();
@@ -102,6 +104,37 @@ struct MallocFreeRegs : public Regs {
   }
 };
 
+struct MaxOpsRegs : public Regs {
+  Regs* const inner;
+  const size_t max_ops;
+  size_t ops_done = 0;
+
+  MaxOpsRegs(Regs* inner, size_t max_ops) : inner(inner), max_ops(max_ops) {}
+
+  void DoMalloc(int reg, size_t size) override {
+    if (ops_done++ >= max_ops) {
+      return;
+    }
+    inner->DoMalloc(reg, size);
+  }
+  void DoRealloc(int reg, size_t new_size) override {
+    if (ops_done++ >= max_ops) {
+      return;
+    }
+    inner->DoRealloc(reg, new_size);
+  }
+  void DoFree(int reg) override {
+    if (ops_done++ >= max_ops) {
+      return;
+    }
+    inner->DoFree(reg);
+  }
+
+  void FreeAll() override {
+    inner->FreeAll();
+  }
+};
+
 void PerformReplay(Regs* r);
 
 static void xgetrusage(struct rusage* usage) {
@@ -111,19 +144,26 @@ static void xgetrusage(struct rusage* usage) {
   }
 }
 
+static uint64_t TimevalNanos(const struct timeval& tv) { return tv.tv_sec * 1000000000ULL + tv.tv_usec * 1000; }
+
 int main() {
 #if USE_MALLOC_REGS
-  MallocFreeRegs r;
+  MallocFreeRegs r_inner;
 #else
-  MMRegs r;
+  MMRegs r_inner;
 #endif
 
+  MaxOpsRegs r(&r_inner, 4000);
+  
   PerformReplay(&r);
   printf("done.\n");
 
   struct rusage usage;
   xgetrusage(&usage);
   printf("MaxRSS: %ld\n", usage.ru_maxrss);
+  printf("Minor faults: %ld\n", usage.ru_minflt);
+  printf("Major faults: %ld\n", usage.ru_majflt);
+  printf("CPU time: %g sec\n", (TimevalNanos(usage.ru_utime) + TimevalNanos(usage.ru_stime)) / 1e9);
 
   // r.FreeAll();
 
