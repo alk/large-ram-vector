@@ -53,3 +53,13 @@ cc_binary(
         ":large-vec",
     ],
 )
+
+cc_binary(
+    name = "replay-reallocs-abseil-tcmalloc",
+    srcs = ["replay-reallocs.cc"],
+    cxxopts = CXXFLAGS + ["-DUSE_MALLOC_REGS"],
+    malloc = "@tcmalloc//tcmalloc",
+    deps = [
+        ":large-vec",
+    ],
+)

@@ -12,4 +12,11 @@ git_override(
     remote = "https://github.com/gperftools/gperftools",
 )
 
+bazel_dep(name = "tcmalloc", version = "0.0.0-20250927-12f2552")
+git_override(
+    module_name = "tcmalloc",
+    commit = "875a24dd98d8233f561a870e68d6129763dd2951",
+    remote = "https://github.com/google/tcmalloc",
+)
+
 bazel_dep(name = "googletest", version = "1.17.0.bcr.2", dev_dependency = True)
