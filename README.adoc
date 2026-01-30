@@ -19,34 +19,40 @@ INFO: Found 5 targets...
 INFO: Elapsed time: 9.031s, Critical Path: 5.09s
 INFO: 73 processes: 20 internal, 53 linux-sandbox.
 INFO: Build completed successfully, 73 total actions
-root@big:~/tmp/large-ram-vector# \time ./bazel-bin/replay-reallocs
+user@big:~/src/large-ram-vector# ./bazel-bin/replay-reallocs
 done.
-MaxRSS: 6831648
-3.70user 25.70system 0:29.42elapsed 99%CPU (0avgtext+0avgdata 6831648maxresident)k
-0inputs+8outputs (0major+46954397minor)pagefaults 0swaps
-root@big:~/tmp/large-ram-vector# \time ./bazel-bin/replay-reallocs-malloc
+MaxRSS: 6829012
+Minor faults: 39719432
+Major faults: 0
+CPU time: 23.4959 sec
+user@big:~/src/large-ram-vector# ./bazel-bin/replay-reallocs-malloc
 done.
-MaxRSS: 6276420
-5.83user 34.70system 0:40.55elapsed 99%CPU (0avgtext+0avgdata 6276420maxresident)k
-0inputs+8outputs (0major+64675886minor)pagefaults 0swaps
-root@big:~/tmp/large-ram-vector# LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so \time ./bazel-bin/replay-reallocs-malloc
+MaxRSS: 6269096
+Minor faults: 64750496
+Major faults: 0
+CPU time: 39.2975 sec
+user@big:~/src/large-ram-vector# LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so ./bazel-bin/replay-reallocs-malloc
 done.
-MaxRSS: 6681640
-7.64user 40.19system 0:47.85elapsed 99%CPU (0avgtext+0avgdata 6681640maxresident)k
-0inputs+8outputs (0major+71682400minor)pagefaults 0swaps
-root@big:~/tmp/large-ram-vector# LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libmimalloc.so.3.1 \time ./bazel-bin/replay-reallocs-malloc
+MaxRSS: 6268768
+Minor faults: 64750501
+Major faults: 0
+CPU time: 44.0282 sec
+user@big:~/src/large-ram-vector# LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libmimalloc.so.3.1 ./bazel-bin/replay-reallocs-malloc
 done.
-MaxRSS: 7084700
-10.08user 45.52system 0:55.62elapsed 99%CPU (0avgtext+0avgdata 7084700maxresident)k
-0inputs+8outputs (0major+77942049minor)pagefaults 0swaps
-root@big:~/tmp/large-ram-vector# \time ./bazel-bin/replay-reallocs-tcmalloc
+MaxRSS: 6269820
+Minor faults: 64750497
+Major faults: 0
+CPU time: 42.4995 sec
+user@big:~/src/large-ram-vector# ./bazel-bin/replay-reallocs-tcmalloc
 done.
-MaxRSS: 9200956
-10.65user 5.15system 0:15.82elapsed 99%CPU (0avgtext+0avgdata 9201096maxresident)k
-0inputs+0outputs (0major+8772737minor)pagefaults 0swaps
-root@big:~/tmp/large-ram-vector# TCMALLOC_AGGRESSIVE_DECOMMIT=t \time ./bazel-bin/replay-reallocs-tcmalloc
+MaxRSS: 9261936
+Minor faults: 5476307
+Major faults: 0
+CPU time: 13.7758 sec
+user@big:~/src/large-ram-vector# ./bazel-bin/replay-reallocs-abseil-tcmalloc
 done.
-MaxRSS: 6918676
-15.23user 59.32system 1:14.58elapsed 99%CPU (0avgtext+0avgdata 6918676maxresident)k
-0inputs+0outputs (0major+105986989minor)pagefaults 0swaps
+MaxRSS: 9652380
+Minor faults: 6367528
+Major faults: 3
+CPU time: 14.262 sec
 ----

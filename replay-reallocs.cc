@@ -156,7 +156,8 @@ int main() {
   MMRegs r_inner;
 #endif
 
-  MaxOpsRegs r(&r_inner, 4000);
+  //MaxOpsRegs r(&r_inner, 4000);
+  Regs& r = r_inner;
 
   PerformReplay(&r);
   printf("done.\n");
