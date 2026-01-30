@@ -21,10 +21,10 @@ INFO: 73 processes: 20 internal, 53 linux-sandbox.
 INFO: Build completed successfully, 73 total actions
 user@big:~/src/large-ram-vector# ./bazel-bin/replay-reallocs
 done.
-MaxRSS: 6829012
-Minor faults: 39719432
+MaxRSS: 6246076
+Minor faults: 39130591
 Major faults: 0
-CPU time: 23.4959 sec
+CPU time: 25.2085 sec
 user@big:~/src/large-ram-vector# ./bazel-bin/replay-reallocs-malloc
 done.
 MaxRSS: 6269096

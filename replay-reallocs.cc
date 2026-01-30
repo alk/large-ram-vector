@@ -49,6 +49,7 @@ struct MMRegs : public Regs {
     auto& ptr_place = RegPlace(reg);
     assert(ptr_place.get() != nullptr);
     ptr_place->Resize(new_size);
+    ptr_place->ShrinkToFit();
   }
   __attribute__((noinline)) void DoFree(int reg) override {
     RegPlace(reg).reset();
