@@ -12,6 +12,7 @@
 #include <mutex>
 #include <optional>
 #include <span>
+#include <utility>
 
 #include "thread_annotations.h"
 
@@ -29,15 +30,24 @@ inline size_t MulOrOOM(size_t a, size_t b) {
 
 class LOCKABLE Mutex : public std::mutex {
  public:
-  void lock() EXCLUSIVE_LOCK_FUNCTION() { std::mutex::lock(); }
-  void unlock() UNLOCK_FUNCTION() { std::mutex::unlock(); }
-  void AssertHeld() ASSERT_EXCLUSIVE_LOCK() {}
+  void lock() EXCLUSIVE_LOCK_FUNCTION() {
+    std::mutex::lock();
+  }
+  void unlock() UNLOCK_FUNCTION() {
+    std::mutex::unlock();
+  }
+  void AssertHeld() ASSERT_EXCLUSIVE_LOCK() {
+  }
 };
 
 class SCOPED_LOCKABLE MutexLock {
  public:
-  explicit MutexLock(Mutex& mu) EXCLUSIVE_LOCK_FUNCTION(mu) : mu_(mu) { mu_.lock(); }
-  ~MutexLock() UNLOCK_FUNCTION() { mu_.unlock(); }
+  explicit MutexLock(Mutex& mu) EXCLUSIVE_LOCK_FUNCTION(mu) : mu_(mu) {
+    mu_.lock();
+  }
+  ~MutexLock() UNLOCK_FUNCTION() {
+    mu_.unlock();
+  }
   MutexLock(const MutexLock&) = delete;
   MutexLock& operator=(const MutexLock&) = delete;
 
@@ -53,7 +63,8 @@ class MMChunkPool {
  public:
   struct PoolDeleter {
     MMChunkPool* pool;
-    PoolDeleter(MMChunkPool* pool) : pool(pool) {}
+    PoolDeleter(MMChunkPool* pool) : pool(pool) {
+    }
     void operator()(MMChunk* chunk) const;
   };
 
@@ -63,9 +74,15 @@ class MMChunkPool {
   Ptr Grab(size_t initial_size);
   size_t Reclaim(size_t goal_bytes) LOCKS_EXCLUDED(mutex_);
 
-  size_t total_in_use() const { return total_in_use_.load(std::memory_order_relaxed); }
-  size_t total_realized() const { return total_realized_.load(std::memory_order_relaxed); }
-  size_t live_chunks_count() const { return live_chunks_count_.load(std::memory_order_relaxed); }
+  size_t total_in_use() const {
+    return total_in_use_.load(std::memory_order_relaxed);
+  }
+  size_t total_realized() const {
+    return total_realized_.load(std::memory_order_relaxed);
+  }
+  size_t live_chunks_count() const {
+    return live_chunks_count_.load(std::memory_order_relaxed);
+  }
 
  private:
   void Release(MMChunk* chunk);
@@ -92,14 +109,18 @@ class MMChunk {
   explicit MMChunk(MMChunkPool* pool, size_t max_size = kDefaultMaxSize);
   ~MMChunk();
 
-  std::span<uint8_t> GetData() const { return std::span<uint8_t>{base_addr_, in_use_size_}; }
+  std::span<uint8_t> GetData() const {
+    return std::span<uint8_t>{base_addr_, in_use_size_};
+  }
 
   void ResizeTo(size_t new_size_bytes) LOCKS_EXCLUDED(gap_lock_);
 
  private:
   // Takes the bytes between current_size_ and realized_size_ and
   // returns them to OS. Reduces realized_size_ accordingly.
-  size_t Trim() LOCKS_EXCLUDED(gap_lock_);
+  // Returns: {bytes_freed, is_fully_compact}
+  // is_fully_compact is true if the realized size matches the needed size (aligned in-use size).
+  std::pair<size_t, bool> Trim(size_t max_free) LOCKS_EXCLUDED(gap_lock_);
   MMChunkPool* const pool_;
   // the starting address of the mapping
   uint8_t* const base_addr_;
@@ -122,7 +143,9 @@ class MMChunk {
   bool is_used_ GUARDED_BY(pool_->mutex_) = true;
 };
 
-inline void MMChunkPool::PoolDeleter::operator()(MMChunk* chunk) const { pool->Release(chunk); }
+inline void MMChunkPool::PoolDeleter::operator()(MMChunk* chunk) const {
+  pool->Release(chunk);
+}
 
 inline void MMChunk::SetInUseSize(size_t new_size) {
   pool_->total_in_use_.fetch_add(new_size - in_use_size_, std::memory_order_relaxed);
@@ -143,7 +166,8 @@ using MMChunkPool = large_vec_internal::MMChunkPool;
 template <typename T>
 class LargeVec {
  public:
-  explicit LargeVec(MMChunkPool* pool) : LargeVec{pool, 0} {}
+  explicit LargeVec(MMChunkPool* pool) : LargeVec{pool, 0} {
+  }
 
   template <class RandomAccessIt>
   LargeVec(MMChunkPool* pool, RandomAccessIt first, RandomAccessIt last) : LargeVec{pool, std::distance(first, last)} {
@@ -167,7 +191,9 @@ class LargeVec {
     other.capacity_ = 0;
   }
 
-  ~LargeVec() { std::destroy_n(DataSpan().data(), size_); }
+  ~LargeVec() {
+    std::destroy_n(DataSpan().data(), size_);
+  }
 
   void swap(LargeVec& other) noexcept {
     using std::swap;
@@ -178,17 +204,31 @@ class LargeVec {
     swap(capacity_, other.capacity_);
   }
 
-  friend void swap(LargeVec& a, LargeVec& b) noexcept { a.swap(b); }
+  friend void swap(LargeVec& a, LargeVec& b) noexcept {
+    a.swap(b);
+  }
 
-  size_t size() const { return size_; }
-  bool empty() const { return size_ == 0; }
+  size_t size() const {
+    return size_;
+  }
+  bool empty() const {
+    return size_ == 0;
+  }
 
-  T& operator[](size_t index) { return DataSpan()[index]; }
-  const T& operator[](size_t index) const { return DataSpan()[index]; }
+  T& operator[](size_t index) {
+    return DataSpan()[index];
+  }
+  const T& operator[](size_t index) const {
+    return DataSpan()[index];
+  }
 
-  std::span<T> DataSpan() { return {data_, size_}; }
+  std::span<T> DataSpan() {
+    return {data_, size_};
+  }
 
-  std::span<const T> DataSpan() const { return {data_, size_}; }
+  std::span<const T> DataSpan() const {
+    return {data_, size_};
+  }
 
   // Resizes the container to contain `new_size` elements.
   // If `new_size` is smaller than the current size, the content is reduced to its first `new_size` elements,
@@ -230,7 +270,9 @@ class LargeVec {
     }
   }
 
-  size_t capacity() const { return capacity_; }
+  size_t capacity() const {
+    return capacity_;
+  }
 
   // Requests the removal of unused capacity.
   // It effectively frees the memory that is no longer needed.
@@ -283,7 +325,9 @@ class LargeVec {
     }
   }
 
-  static size_t BytesFor(size_t elements) { return large_vec_internal::MulOrOOM(elements, sizeof(T)); }
+  static size_t BytesFor(size_t elements) {
+    return large_vec_internal::MulOrOOM(elements, sizeof(T));
+  }
 
   LargeVec(MMChunkPool* pool, size_t initial_capacity)
       : pool_(pool),
@@ -291,7 +335,8 @@ class LargeVec {
                                     : MMChunkPool::Ptr(nullptr, MMChunkPool::PoolDeleter(pool))},
         data_{chunk_ ? reinterpret_cast<T*>(chunk_->GetData().data()) : nullptr},
         size_{0},
-        capacity_{initial_capacity} {}
+        capacity_{initial_capacity} {
+  }
 
   MMChunkPool* pool_;
   MMChunkPool::Ptr chunk_;

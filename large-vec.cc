@@ -13,6 +13,8 @@
 #include <sys/prctl.h>
 #endif  // __linux__
 
+#include <tuple>
+
 // MAP_NORESERVE is not defined on macOS. And is not part of the POSIX standard.
 #ifndef MAP_NORESERVE
 #define MAP_NORESERVE 0
@@ -39,8 +41,13 @@ size_t RoundUp(size_t value, size_t alignment) {
   return (value + alignment - 1) & ~(alignment - 1);
 }
 
+size_t RoundUpToPage(size_t value) {
+  static size_t pagesize = getpagesize();
+  return RoundUp(value, pagesize);
+}
+
 uint8_t* MapChunk(size_t max_size) {
-  max_size = RoundUp(max_size, getpagesize());
+  max_size = RoundUpToPage(max_size);
   void* mmap_result = mmap(0, max_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_NORESERVE | MAP_PRIVATE, -1, 0);
   if (mmap_result == MAP_FAILED) {
     large_vec_internal::RaiseOOM();
@@ -106,9 +113,7 @@ void MMChunk::ResizeTo(size_t new_size) {
 
   MutexLock lock(gap_lock_);
 
-  size_t pagesize = getpagesize();
-
-  size_t want_realized = RoundUp(new_size, pagesize);
+  size_t want_realized = RoundUpToPage(new_size);
   if (want_realized > realized_size_) {
     pool_->ReclaimForChunk(this, want_realized - realized_size_);
     SetRealizedSize(want_realized);
@@ -119,7 +124,7 @@ void MMChunk::ResizeTo(size_t new_size) {
   pool_->UpdateTrimmable(this, new_gap > 0);
 }
 
-size_t MMChunk::Trim() {
+std::pair<size_t, bool> MMChunk::Trim(size_t max_free) {
 #ifndef NDEBUG
   {
     MutexLock lock(pool_->mutex_);
@@ -128,15 +133,21 @@ size_t MMChunk::Trim() {
 #endif
 
   MutexLock lock(gap_lock_);
-  size_t needed = RoundUp(in_use_size_, getpagesize());
+  size_t needed = RoundUpToPage(in_use_size_);
   size_t freed = 0;
+  bool fully_compact = true;
 
   if (needed < realized_size_) {
-    freed = realized_size_ - needed;
-    DecommitChunk(base_addr_ + needed, freed);
-    SetRealizedSize(needed);
+    size_t reclaimable = realized_size_ - needed;
+    size_t limit = RoundUpToPage(max_free);
+    freed = std::min(reclaimable, limit);
+    if (freed > 0) {
+      DecommitChunk(base_addr_ + realized_size_ - freed, freed);
+      SetRealizedSize(realized_size_ - freed);
+    }
+    fully_compact = (freed == reclaimable);
   }
-  return freed;
+  return {freed, fully_compact};
 }
 
 MMChunkPool::Ptr MMChunkPool::Grab(size_t initial_size) {
@@ -204,7 +215,7 @@ void MMChunkPool::UpdateTrimmable(MMChunk* chunk, bool has_gap) {
   }
 
   assert(chunk->is_used_);
-  assert(chunk->realized_size_ >= RoundUp(chunk->in_use_size_, getpagesize()));
+  assert(chunk->realized_size_ >= RoundUpToPage(chunk->in_use_size_));
 
   if (!chunk->trimmable_iter_.has_value()) {
     trimmable_used_chunks_.push_front(chunk);
@@ -224,7 +235,9 @@ void MMChunkPool::RemoveFromTrimmableLocked(MMChunk* chunk) {
   }
 }
 
-size_t MMChunkPool::Reclaim(size_t goal_bytes) { return ReclaimForChunk(nullptr, goal_bytes); }
+size_t MMChunkPool::Reclaim(size_t goal_bytes) {
+  return ReclaimForChunk(nullptr, goal_bytes);
+}
 
 size_t MMChunkPool::ReclaimForChunk(MMChunk* protected_chunk, size_t goal_bytes) {
   MutexLock lock(mutex_);
@@ -239,15 +252,24 @@ size_t MMChunkPool::ReclaimForChunk(MMChunk* protected_chunk, size_t goal_bytes)
   while (!reclaimable_free_chunks_.empty() && reclaimed < goal_bytes) {
     auto it = reclaimable_free_chunks_.begin();
 
+    // We need to pop it from list to operate on it unlocked.
     std::list<std::unique_ptr<MMChunk>> temp_list;
     temp_list.splice(temp_list.begin(), reclaimable_free_chunks_, it);
+    MMChunk* c = temp_list.front().get();
 
     mutex_.unlock();
-    MMChunk* c = it->get();
-    reclaimed += c->Trim();
+    size_t to_reclaim = goal_bytes - reclaimed;
+    size_t got;
+    bool fully_emptied;
+    std::tie(got, fully_emptied) = c->Trim(to_reclaim);
+    reclaimed += got;
     mutex_.lock();
 
-    trimmed_free_chunks_.splice(trimmed_free_chunks_.begin(), temp_list);
+    if (fully_emptied) {
+      trimmed_free_chunks_.splice(trimmed_free_chunks_.begin(), temp_list);
+    } else {
+      reclaimable_free_chunks_.splice(reclaimable_free_chunks_.end(), temp_list);
+    }
   }
 
   // 2. Trim LRU trimmable active chunks
@@ -256,8 +278,20 @@ size_t MMChunkPool::ReclaimForChunk(MMChunk* protected_chunk, size_t goal_bytes)
     RemoveFromTrimmableLocked(chunk);
 
     mutex_.unlock();
-    reclaimed += chunk->Trim();
+
+    size_t to_reclaim = goal_bytes - reclaimed;
+    auto [got, fully_compact] = chunk->Trim(to_reclaim);
+    reclaimed += got;
     mutex_.lock();
+
+    if (!fully_compact) {
+      // Gap remains, put it back
+      assert(chunk->pool_ == this);
+      chunk->pool_->mutex_.AssertHeld();
+      trimmable_used_chunks_.push_front(chunk);
+      chunk->trimmable_iter_ = trimmable_used_chunks_.begin();
+    }
+    // If fully_reclaimed, gap is 0, don't add back.
   }
 
   return reclaimed;

@@ -109,7 +109,8 @@ struct MaxOpsRegs : public Regs {
   const size_t max_ops;
   size_t ops_done = 0;
 
-  MaxOpsRegs(Regs* inner, size_t max_ops) : inner(inner), max_ops(max_ops) {}
+  MaxOpsRegs(Regs* inner, size_t max_ops) : inner(inner), max_ops(max_ops) {
+  }
 
   void DoMalloc(int reg, size_t size) override {
     if (ops_done++ >= max_ops) {
@@ -144,7 +145,9 @@ static void xgetrusage(struct rusage* usage) {
   }
 }
 
-static uint64_t TimevalNanos(const struct timeval& tv) { return tv.tv_sec * 1000000000ULL + tv.tv_usec * 1000; }
+static uint64_t TimevalNanos(const struct timeval& tv) {
+  return tv.tv_sec * 1000000000ULL + tv.tv_usec * 1000;
+}
 
 int main() {
 #if USE_MALLOC_REGS
@@ -154,7 +157,7 @@ int main() {
 #endif
 
   MaxOpsRegs r(&r_inner, 4000);
-  
+
   PerformReplay(&r);
   printf("done.\n");
 
